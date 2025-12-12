@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Japan Trip 2026 (Sync)</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // ==========================================
+        // ↓↓↓↓↓ 請將你在 Firebase 複製的設定貼在下方 ↓↓↓↓↓
+        // ==========================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyDVspHPm7LDViquTY3BqrQ-_NDqQtonhvA",
+  authDomain: "japantrip2026-9f9b0.firebaseapp.com",
+  projectId: "japantrip2026-9f9b0",
+  storageBucket: "japantrip2026-9f9b0.firebasestorage.app",
+  messagingSenderId: "303179138068",
+  appId: "1:303179138068:web:ae26dfeaccdef6e7605301"
+
+        };
+        // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        // Document Reference (所有資料都會存這個 ID 為 'trip_data' 的檔案裡)
+        const docRef = db.collection("japan2026").doc("trip_data");
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'jp-pink': '#f3d1d6', 'jp-pink-dark': '#e09aa5',
+                        'jp-blue': '#a0d8ef', 'jp-green': '#b8d2ac',
+                        'jp-bg': '#fcfcfc', 'jp-text': '#4a4a4a'
+                    },
+                    fontFamily: { sans: ['"Noto Sans JP"', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #f5f5f7; color: #4a4a4a; }
+        .app-container { max-width: 480px; margin: 0 auto; background-color: #fcfcfc; min-height: 100vh; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .input-edit { width: 100%; border-bottom: 1px dashed #e09aa5; background: transparent; padding: 2px 0; outline: none; }
+        .tab-active { color: #e09aa5; }
+        .tab-inactive { color: #a1a1a1; }
+        /* Loading Spinner */
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #e09aa5; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="app" class="app-container pb-24">
+        
+        <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md px-6 py-4 shadow-sm flex items-center gap-4 justify-between">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-jp-pink shadow-sm shrink-0">
+                    <img src="logo.jpg" alt="Logo" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/100x100?text=JP'">
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-jp-text tracking-wide">Japan 2026</h1>
+                    <p class="text-xs text-gray-400 flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-400' : 'bg-red-400'"></span>
+                        {{ isConnected ? '已同步雲端' : '連線中...' }}
+                    </p>
+                </div>
+            </div>
+        </header>
+
+        <div v-if="isLoading" class="flex flex-col items-center justify-center pt-20">
+            <div class="loader mb-2"></div>
+            <p class="text-xs text-gray-400">正在下載最新行程...</p>
+        </div>
+
+        <main v-else class="p-4">
+            
+            <div v-if="currentTab === 'itinerary'" class="space-y-4">
+                <div class="flex justify-between items-center mb-4 pl-2 border-l-4 border-jp-pink">
+                    <h2 class="text-xl font-bold text-jp-text">行程表</h2>
+                    <button @click="toggleEditMode" class="text-xs px-3 py-1 rounded-full border transition-colors" 
+                            :class="isEditingItinerary ? 'bg-jp-pink text-white border-jp-pink' : 'border-gray-300 text-gray-400'">
+                        {{ isEditingItinerary ? '完成' : '編輯' }}
+                    </button>
+                </div>
+                
+                <div v-for="(day, dayIndex) in itinerary" :key="dayIndex" class="bg-white rounded-2xl p-4 card-shadow border border-gray-50">
+                    <div @click="!isEditingItinerary && (day.isOpen = !day.isOpen)" class="flex justify-between items-center cursor-pointer">
+                        <div class="flex items-center gap-3 w-full">
+                            <div class="bg-jp-pink/20 text-jp-pink-dark font-bold rounded-lg px-3 py-1 text-sm text-center min-w-[60px]">
+                                {{ day.date }}<br><span class="text-xs">Day {{ dayIndex + 1 }}</span>
+                            </div>
+                            <div class="flex-1">
+                                <div v-if="!isEditingItinerary">
+                                    <h3 class="font-bold text-gray-700">{{ day.title }}</h3>
+                                    <div class="flex items-center text-xs text-gray-400 mt-1">
+                                        <span class="material-icons-round text-sm mr-1">{{ getWeatherIcon(day.weather) }}</span>
+                                        {{ day.weather }}
+                                    </div>
+                                </div>
+                                <div v-else class="space-y-1">
+                                    <input v-model="day.title" class="input-edit font-bold text-gray-700" placeholder="標題">
+                                    <input v-model="day.weather" class="input-edit text-xs text-gray-400" placeholder="天氣">
+                                </div>
+                            </div>
+                        </div>
+                        <span v-if="!isEditingItinerary" class="material-icons-round text-gray-300 transition-transform" :class="{'rotate-180': day.isOpen}">expand_more</span>
+                    </div>
+
+                    <div v-if="day.isOpen || isEditingItinerary" class="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                        <div v-for="(item, eventIndex) in day.events" :key="eventIndex" class="flex gap-3 relative">
+                            <div class="flex flex-col items-center">
+                                <div class="w-2 h-2 rounded-full bg-jp-pink-dark mt-2"></div>
+                                <div v-if="eventIndex !== day.events.length - 1" class="w-0.5 h-full bg-gray-100 my-1"></div>
+                            </div>
+                            <div class="pb-2 flex-1">
+                                <div class="flex justify-between items-start">
+                                    <div v-if="!isEditingItinerary" class="flex-1 mr-2">
+                                        <span class="text-xs font-bold text-jp-blue bg-jp-blue/10 px-2 py-0.5 rounded inline-block mb-1">{{ item.time }}</span>
+                                        <p class="text-sm text-gray-700 font-medium">{{ item.activity }}</p>
+                                        <p v-if="item.note" class="text-xs text-gray-500 mt-1 bg-gray-50 p-2 rounded border border-gray-100 whitespace-pre-line">{{ item.note }}</p>
+                                        <span v-if="item.cost" class="text-xs text-gray-400">¥{{ item.cost }}</span>
+                                    </div>
+                                    <div v-else class="flex-1 mr-2 space-y-2">
+                                        <div class="flex gap-2">
+                                            <input v-model="item.time" class="input-edit w-16 text-xs font-bold text-jp-blue">
+                                            <input v-model="item.cost" class="input-edit flex-1 text-xs" placeholder="費用">
+                                        </div>
+                                        <input v-model="item.activity" class="input-edit text-sm" placeholder="活動">
+                                        <textarea v-model="item.note" class="input-edit text-xs h-16" placeholder="備註"></textarea>
+                                        <button @click="removeEvent(dayIndex, eventIndex)" class="text-red-300 text-xs mt-1">刪除此項</button>
+                                    </div>
+                                    <button v-if="!isEditingItinerary" @click="openMap(item.activity)" class="text-jp-pink-dark"><span class="material-icons-round text-lg">map</span></button>
+                                </div>
+                            </div>
+                        </div>
+                        <button v-if="isEditingItinerary" @click="addEvent(dayIndex)" class="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-xs">+ 新增行程</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'expenses'" class="space-y-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 pl-2 border-l-4 border-jp-green">雲端記帳</h2>
+                <div class="bg-gradient-to-r from-jp-green to-teal-100 rounded-2xl p-6 text-white shadow-lg mb-6">
+                    <p class="text-sm opacity-80">總支出</p>
+                    <p class="text-3xl font-bold mt-1">¥{{ totalExpense.toLocaleString() }}</p>
+                </div>
+                <div class="bg-white rounded-2xl p-4 card-shadow space-y-3">
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="col-span-2"><input v-model="newExpense.item" type="text" placeholder="項目" class="w-full bg-gray-50 rounded-lg p-2 text-sm"></div>
+                        <div><input v-model.number="newExpense.amount" type="number" placeholder="¥" class="w-full bg-gray-50 rounded-lg p-2 text-sm"></div>
+                    </div>
+                    <select v-model="newExpense.category" class="w-full bg-gray-50 rounded-lg p-2 text-sm"><option value="食">食</option><option value="購物">購物</option><option value="交通">交通</option><option value="其他">其他</option></select>
+                    <button @click="addExpense" class="w-full bg-jp-green text-white font-bold py-2.5 rounded-xl shadow-sm">加入支出</button>
+                </div>
+                <div class="space-y-2 mt-4">
+                    <div v-for="(exp, index) in expenses.slice().reverse()" :key="index" class="bg-white rounded-xl p-3 flex justify-between items-center card-shadow">
+                        <div class="flex items-center gap-3">
+                            <div :class="getCategoryColor(exp.category)" class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs">{{ exp.category[0] }}</div>
+                            <div><p class="text-sm font-bold text-gray-700">{{ exp.item }}</p><p class="text-[10px] text-gray-400">{{ exp.date }}</p></div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-gray-700">¥{{ exp.amount.toLocaleString() }}</span>
+                            <button @click="removeExpense(expenses.length - 1 - index)" class="text-gray-300 hover:text-red-400"><span class="material-icons-round">close</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'shopping'" class="space-y-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 pl-2 border-l-4 border-jp-blue">購物清單</h2>
+                <div class="flex gap-2 mb-4">
+                    <input v-model="newItem" @keyup.enter="addShoppingItem" type="text" placeholder="新增項目..." class="flex-1 bg-white rounded-xl p-3 shadow-sm text-sm">
+                    <button @click="addShoppingItem" class="bg-jp-blue text-white rounded-xl w-12 flex items-center justify-center"><span class="material-icons-round">add</span></button>
+                </div>
+                <div class="bg-white rounded-2xl p-2 card-shadow">
+                    <div v-for="(item, index) in shoppingList" :key="index" class="flex items-center p-3 border-b border-gray-50 last:border-0">
+                        <button @click="toggleShop(index)" class="mr-3" :class="item.done ? 'text-jp-blue' : 'text-gray-200'"><span class="material-icons-round">{{ item.done ? 'check_circle' : 'radio_button_unchecked' }}</span></button>
+                        <span :class="{'line-through text-gray-300': item.done}" class="flex-1 text-sm font-medium">{{ item.name }}</span>
+                        <button @click="removeShop(index)" class="text-gray-300 hover:text-red-400"><span class="material-icons-round text-sm">delete</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'food'" class="space-y-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 pl-2 border-l-4 border-yellow-400">美食願望</h2>
+                <div class="flex gap-2 mb-4">
+                    <input v-model="newFood" @keyup.enter="addFoodItem" type="text" placeholder="新增美食..." class="flex-1 bg-white rounded-xl p-3 shadow-sm text-sm border-transparent focus:border-yellow-400 border">
+                    <button @click="addFoodItem" class="bg-yellow-400 text-white rounded-xl w-12 flex items-center justify-center"><span class="material-icons-round">add</span></button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div v-for="(item, index) in foodList" :key="index" class="bg-white p-3 rounded-xl card-shadow relative overflow-hidden group">
+                        <div class="absolute top-0 left-0 w-1 h-full" :class="item.done ? 'bg-gray-200' : 'bg-yellow-400'"></div>
+                        <div class="flex justify-between items-start pl-2">
+                            <h4 :class="{'line-through text-gray-300': item.done}" class="font-bold text-sm">{{ item.name }}</h4>
+                            <button @click="removeFood(index)" class="text-gray-200 hover:text-red-400"><span class="material-icons-round text-sm">close</span></button>
+                        </div>
+                        <button @click="toggleFood(index)" class="w-full mt-2 text-xs py-1.5 rounded bg-gray-50 text-gray-500">{{ item.done ? '未吃' : '已吃' }}</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur shadow-[0_-5px_20px_rgba(0,0,0,0.03)] border-t border-gray-100 flex justify-around items-center py-2 pb-6 z-50 max-w-[480px] mx-auto">
+            <button @click="currentTab = 'itinerary'" class="flex flex-col items-center p-2" :class="currentTab === 'itinerary' ? 'tab-active' : 'tab-inactive'"><span class="material-icons-round mb-1">calendar_today</span><span class="text-[10px]">行程</span></button>
+            <button @click="currentTab = 'expenses'" class="flex flex-col items-center p-2" :class="currentTab === 'expenses' ? 'tab-active' : 'tab-inactive'"><span class="material-icons-round mb-1">account_balance_wallet</span><span class="text-[10px]">記帳</span></button>
+            <button @click="currentTab = 'shopping'" class="flex flex-col items-center p-2" :class="currentTab === 'shopping' ? 'tab-active' : 'tab-inactive'"><span class="material-icons-round mb-1">shopping_bag</span><span class="text-[10px]">購物</span></button>
+            <button @click="currentTab = 'food'" class="flex flex-col items-center p-2" :class="currentTab === 'food' ? 'tab-active' : 'tab-inactive'"><span class="material-icons-round mb-1">restaurant</span><span class="text-[10px]">美食</span></button>
+        </nav>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        // Default Data (Same as before, used for initialization)
+        const defaultData = {
+            itinerary: [
+                { date: '5/1', title: '抵達 & 京都補給', weather: '晴時多雲 6°C', isOpen: true, events: [{ time: '08:20', activity: 'HK -> KIX CX596', note: '機程 (Source: 1)', cost: '' }, { time: '13:00', activity: 'Haruka 列車 -> 京都', cost: '1800', note: '往京都站' }, { time: '15:00', activity: '酒店 Check-in', note: 'Source: 1', cost: '' }, { time: '16:00', activity: '京都站 Yodobashi / Lopia', note: 'B2超市/Uniqlo/玩具/西松屋', cost: '' }, { time: '18:00', activity: '晚餐', cost: '2000', note: '京都勝牛 / HIRO 漢堡排' }] },
+                { date: '6/1', title: '嵐山 & 鐵道博物館', weather: '多雲 5°C', isOpen: false, events: [{ time: '08:30', activity: '出發去嵐山', cost: '240', note: 'JR山陰本線快速列車' }, { time: '09:30', activity: '竹林 / 渡月橋', note: '散步', cost: '' }, { time: '12:00', activity: '午餐', cost: '2000', note: '嵯峨豆腐稻' }, { time: '13:00', activity: '京都鐵道博物館', cost: '1500', note: '蒸汽火車票 ¥300' }, { time: '17:30', activity: '晚餐', note: '京都站附近', cost: '' }] },
+                { date: '7/1', title: '琵琶湖滑雪 & 溫泉', weather: '雪 1°C', isOpen: false, events: [{ time: '08:00', activity: '京都 -> 琵琶湖 Valley', cost: '1000', note: 'JR湖西線到志賀站轉68路巴士' }, { time: '10:00', activity: '琵琶湖 Snow Land', cost: '5000', note: '纜車+玩雪' }, { time: '15:00', activity: '綠水亭 Check-in', note: '雄琴溫泉站接駁', cost: '' }, { time: '18:00', activity: '溫泉旅館晚餐', note: '一泊二食', cost: '' }] },
+                { date: '8/1', title: '再訪琵琶湖 & 清水寺', weather: '晴朗 7°C', isOpen: false, events: [{ time: '07:30', activity: '早餐 & Check Out', note: '綠水亭', cost: '' }, { time: '09:30', activity: '綠水亭 -> 琵琶湖 Valley', note: '玩多次 / 補影相', cost: '' }, { time: '14:00', activity: '回京都', note: 'JR湖西線', cost: '' }, { time: '16:30', activity: '清水寺 / 二年坂', note: '巴士 202/207', cost: '' }, { time: '18:00', activity: '晚餐', note: '', cost: '' }] },
+                { date: '9/1', title: '大阪 Kids Plaza', weather: '多雲 8°C', isOpen: false, events: [{ time: '08:40', activity: '京都 -> 大阪', cost: '570', note: 'JR新快速 -> 環狀線天滿站' }, { time: '09:30', activity: 'Kids Plaza Osaka', cost: '3500', note: '遊玩' }, { time: '14:00', activity: '午餐: 膳や', note: '難波 Walk', cost: '' }, { time: '18:00', activity: '晚餐: 大阪燒', cost: '2500', note: '美津の' }] },
+                { date: '10/1', title: '京都錦市場', weather: '晴 6°C', isOpen: false, events: [{ time: '09:30', activity: '鴨川跳烏龜', note: '出町柳', cost: '' }, { time: '11:00', activity: '錦市場 / 富美家', note: '午餐', cost: '' }, { time: '15:00', activity: '河原町 / AEON', note: '購物', cost: '' }, { time: '18:15', activity: '晚餐: 燒肉 弘商店', cost: '5000', note: '京都站西' }] },
+                { date: '11/1', title: 'Rinku Outlet & 返程', weather: '多雲 7°C', isOpen: false, events: [{ time: '09:30', activity: '前往 Rinku Outlet', note: '臨空城', cost: '' }, { time: '14:00', activity: '前往關西機場', note: 'KIX', cost: '' }, { time: '16:55', activity: 'KIX -> HK CX561', note: '回港', cost: '' }] }
+            ],
+            expenses: [],
+            shoppingList: [
+                { name: '眼鏡 (JINS)', loc: '', done: false }, { name: '浴室地墊', loc: '', done: false }, { name: '3COINS 煎魚神器', loc: '', done: false }, { name: '伊藤園茶包', loc: '', done: false }, { name: 'Salonia 直髮夾', loc: '', done: false }, { name: 'Uniqlo Heattech', loc: '', done: false }, { name: '西松屋 鰹魚粉', loc: '', done: false }
+            ],
+            foodList: [
+                { name: '燒肉 (弘商店)', note: '', done: false }, { name: 'Mister Donut', note: '', done: false }, { name: 'Sizuya 麵包', note: '', done: false }, { name: '大阪燒', note: '', done: false }, { name: '炸豬排', note: '', done: false }, { name: '富美家鍋燒麵', note: '', done: false }
+            ]
+        };
+
+        createApp({
+            setup() {
+                const currentTab = ref('itinerary');
+                const isConnected = ref(false);
+                const isLoading = ref(true);
+                
+                // Reactive State
+                const itinerary = ref([]);
+                const expenses = ref([]);
+                const shoppingList = ref([]);
+                const foodList = ref([]);
+                
+                // Edit States
+                const isEditingItinerary = ref(false);
+                const newExpense = ref({ item: '', amount: null, category: '食' });
+                const newItem = ref('');
+                const newFood = ref('');
+
+                // --- Sync Logic (The Magic) ---
+                // Listen to database changes in real-time
+                onMounted(() => {
+                    docRef.onSnapshot((doc) => {
+                        isLoading.value = false;
+                        if (doc.exists) {
+                            // Sync data from cloud
+                            const data = doc.data();
+                            itinerary.value = data.itinerary || defaultData.itinerary;
+                            expenses.value = data.expenses || [];
+                            shoppingList.value = data.shoppingList || defaultData.shoppingList;
+                            foodList.value = data.foodList || defaultData.foodList;
+                            isConnected.value = true;
+                        } else {
+                            // First time run: Create the document with default data
+                            docRef.set(defaultData).then(() => {
+                                console.log("Database initialized!");
+                            });
+                        }
+                    }, (error) => {
+                        console.error("Sync Error:", error);
+                        isConnected.value = false;
+                    });
+                });
+
+                // Function to push updates to Cloud
+                const pushToCloud = () => {
+                    if (!isConnected.value) return;
+                    docRef.update({
+                        itinerary: JSON.parse(JSON.stringify(itinerary.value)),
+                        expenses: JSON.parse(JSON.stringify(expenses.value)),
+                        shoppingList: JSON.parse(JSON.stringify(shoppingList.value)),
+                        foodList: JSON.parse(JSON.stringify(foodList.value))
+                    }).catch(err => console.error("Save failed", err));
+                };
+
+                // --- Actions (Wrapped to auto-save) ---
+                
+                // Itinerary
+                const toggleEditMode = () => {
+                    isEditingItinerary.value = !isEditingItinerary.value;
+                    if(!isEditingItinerary.value) pushToCloud();
+                };
+                const addEvent = (dIdx) => { itinerary.value[dIdx].events.push({time:'00:00', activity:'新活動', note:'', cost:''}); };
+                const removeEvent = (dIdx, eIdx) => { itinerary.value[dIdx].events.splice(eIdx, 1); };
+
+                // Expenses
+                const addExpense = () => {
+                    if(!newExpense.value.item || !newExpense.value.amount) return;
+                    const d = new Date();
+                    expenses.value.push({ ...newExpense.value, date: `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${d.getMinutes()<10?'0'+d.getMinutes():d.getMinutes()}` });
+                    newExpense.value = { item: '', amount: null, category: '食' };
+                    pushToCloud();
+                };
+                const removeExpense = (idx) => { expenses.value.splice(idx, 1); pushToCloud(); };
+
+                // Shopping
+                const addShoppingItem = () => { if(newItem.value) { shoppingList.value.push({name: newItem.value, done: false}); newItem.value=''; pushToCloud(); } };
+                const toggleShop = (i) => { shoppingList.value[i].done = !shoppingList.value[i].done; pushToCloud(); };
+                const removeShop = (i) => { shoppingList.value.splice(i, 1); pushToCloud(); };
+
+                // Food
+                const addFoodItem = () => { if(newFood.value) { foodList.value.push({name: newFood.value, done: false}); newFood.value=''; pushToCloud(); } };
+                const toggleFood = (i) => { foodList.value[i].done = !foodList.value[i].done; pushToCloud(); };
+                const removeFood = (i) => { foodList.value.splice(i, 1); pushToCloud(); };
+
+                // Utils
+                const totalExpense = computed(() => expenses.value.reduce((s, i) => s + i.amount, 0));
+                const getCategoryColor = (c) => ({'食':'bg-yellow-400','購物':'bg-jp-blue','交通':'bg-gray-400'}[c]||'bg-jp-pink-dark');
+                const getWeatherIcon = (t) => t.includes('雲')?'cloud':(t.includes('雨')?'umbrella':(t.includes('雪')?'ac_unit':'wb_sunny'));
+                const openMap = (l) => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l)}`, '_blank');
+
+                return {
+                    currentTab, isConnected, isLoading,
+                    itinerary, isEditingItinerary, toggleEditMode, addEvent, removeEvent,
+                    expenses, newExpense, addExpense, removeExpense, totalExpense, getCategoryColor,
+                    shoppingList, newItem, addShoppingItem, toggleShop, removeShop,
+                    foodList, newFood, addFoodItem, toggleFood, removeFood,
+                    getWeatherIcon, openMap
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
